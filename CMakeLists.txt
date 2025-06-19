@@ -32,6 +32,7 @@ add_executable(${PROJECT_NAME}_test
           test/test_result.cpp
           test/test_timer.cpp
           test/test_struct.cpp
+          test/test_time.cpp
           )
 
 add_executable(${PROJECT_NAME}_demo

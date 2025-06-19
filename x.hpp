@@ -558,4 +558,144 @@ private:
 };
 
 
+// ----------------------- Time -----------------------
+class Time {
+public:
+    Time() = default;
+    
+    // Create from components
+    Time(cI32& year,     cI32& month,      cI32& day, 
+         cI32& hour = 0, cI32& minute = 0, cI32& second = 0, 
+         cI32& microseconds = 0) {
+        auto dp = std::chrono::year_month_day{
+            std::chrono::year{year},
+            std::chrono::month{static_cast<unsigned>(month)},
+            std::chrono::day{static_cast<unsigned>(day)}
+        };
+        auto time = std::chrono::hh_mm_ss{
+            std::chrono::hours{hour} + 
+            std::chrono::minutes{minute} + 
+            std::chrono::seconds{second} +
+            std::chrono::microseconds{microseconds}
+        };
+        tp_ = std::chrono::sys_days{dp} + time.to_duration();
+    }
+
+    // Create from string "YYYY-MM-DD HH:MM:SS.fffffff"
+    explicit Time(cStr& time_str) {
+        std::istringstream ss(time_str);
+        std::chrono::sys_time<std::chrono::microseconds> tp;
+        ss >> std::chrono::parse("%Y-%m-%d %H:%M:%S", tp);
+        if (ss.fail()) {
+            throw std::runtime_error("Invalid time format");
+        }
+        
+        // Handle microseconds if present
+        if (ss.peek() == '.') {
+            ss.ignore();
+            u64 us;
+            ss >> us;
+            if (!ss.fail()) {
+                // Scale to microseconds (input may have 1-6 digits)
+                while (us < 100000) us *= 10;
+                tp += std::chrono::microseconds(us);
+            }
+        }
+        tp_ = tp;
+    }
+
+    // Get current time
+    static Time now() noexcept {
+        auto now = std::chrono::system_clock::now();
+        return Time(now);
+    }
+
+    // Serialize to string "YYYY-MM-DD HH:MM:SS.ffffff"
+    str to_string() const noexcept {
+        auto dp = std::chrono::floor<std::chrono::days>(tp_);
+        auto ymd = std::chrono::year_month_day{dp};
+        auto time = std::chrono::hh_mm_ss{tp_ - dp};
+        
+        if (time.subseconds().count() > 0) {
+            return _fmt("{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
+                static_cast<int>(ymd.year()),
+                static_cast<unsigned>(ymd.month()),
+                static_cast<unsigned>(ymd.day()),
+                time.hours().count(),
+                time.minutes().count(),
+                time.seconds().count(),
+                time.subseconds().count()/10);
+        }
+        return _fmt("{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                static_cast<int>(ymd.year()),
+                static_cast<unsigned>(ymd.month()),
+                static_cast<unsigned>(ymd.day()),
+                time.hours().count(),
+                time.minutes().count(),
+                time.seconds().count());
+    }
+
+    // Comparison operators
+    bool operator==(const Time& other) const noexcept { return tp_ == other.tp_; }
+    bool operator!=(const Time& other) const noexcept { return tp_ != other.tp_; }
+    bool operator<(const Time& other)  const noexcept { return tp_ < other.tp_; }
+    bool operator<=(const Time& other) const noexcept { return tp_ <= other.tp_; }
+    bool operator>(const Time& other)  const noexcept { return tp_ > other.tp_; }
+    bool operator>=(const Time& other) const noexcept { return tp_ >= other.tp_; }
+
+    // Arithmetic operators
+    Time operator+(const std::chrono::microseconds& duration) const noexcept {
+        return Time(tp_ + duration);
+    }
+    
+    Time operator-(const std::chrono::microseconds& duration) const noexcept {
+        return Time(tp_ - duration);
+    }
+    
+    std::chrono::microseconds operator-(const Time& other) const noexcept {
+        return std::chrono::duration_cast<std::chrono::microseconds>(tp_ - other.tp_);
+    }
+
+    // Get components
+    i32 year() const noexcept {
+        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp_)};
+        return static_cast<int>(ymd.year());
+    }
+    
+    i32 month() const noexcept {
+        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp_)};
+        return static_cast<unsigned>(ymd.month());
+    }
+    
+    i32 day() const noexcept {
+        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp_)};
+        return static_cast<unsigned>(ymd.day());
+    }
+    
+    i32 hour() const noexcept {
+        auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
+        return time.hours().count();
+    }
+    
+    i32 minute() const noexcept {
+        auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
+        return time.minutes().count();
+    }
+    
+    u64 second() const noexcept {
+        auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
+        return time.seconds().count();
+    }
+    
+    u64 microseconds() const noexcept {
+        auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
+        return time.subseconds().count()/10;
+    }
+
+private:
+    explicit Time(std::chrono::system_clock::time_point tp) : tp_(tp) {}
+    
+    std::chrono::system_clock::time_point tp_;
+};
+
 } // namespace x
