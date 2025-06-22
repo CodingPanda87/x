@@ -471,6 +471,8 @@ public:
         return res;
     }
 
+    static Result OK() { return Result(0, "");}
+
 private:
     u32      code_ = 0xFFFFFFFF;
     str       msg_;
@@ -484,8 +486,7 @@ class Struct {
 public:
     Struct()  = default;
     ~Struct() = default;
-    
-    // Copy constructor/assignment
+
     Struct(const Struct& other) 
         : data_(other.data_) {}
 
@@ -501,7 +502,6 @@ public:
         return *this;
     }
     
-    // Move constructor/assignment
     Struct(Struct&& other) noexcept 
         : data_(std::move(other.data_)){}
           
@@ -512,13 +512,11 @@ public:
         return *this;
     }
     
-    // Add or update a field
     template<typename T>
     void add(cStr& key, const T& value) {
         data_[key] = value;
     }
 
-    // Get a field with type checking
     template<typename T>
     T get(cStr& key) const {
         try {
@@ -528,27 +526,22 @@ public:
         }
     }
 
-    // Check if key exists
     bool has(cStr& key) const noexcept {
         return data_.find(key) != data_.end();
     }
 
-    // Remove a field
     void remove(cStr& key) noexcept {
         data_.erase(key);
     }
 
-    // Check if empty
     bool empty() const noexcept {
         return data_.empty();
     }
 
-    // Clear all fields
     void clear() noexcept {
         data_.clear();
     }
 
-    // Field count
     size_t size() const noexcept {
         return data_.size();
     }
@@ -563,7 +556,6 @@ class Time {
 public:
     Time() = default;
     
-    // Create from components
     Time(cI32& year,     cI32& month,      cI32& day, 
          cI32& hour = 0, cI32& minute = 0, cI32& second = 0, 
          cI32& microseconds = 0) {
@@ -586,25 +578,18 @@ public:
         std::istringstream ss(time_str);
         std::chrono::sys_time<std::chrono::microseconds> tp;
         ss >> std::chrono::parse("%Y-%m-%d %H:%M:%S", tp);
-        if (ss.fail()) {
+        if (ss.fail()) 
             throw std::runtime_error("Invalid time format");
-        }
-        
-        // Handle microseconds if present
         if (ss.peek() == '.') {
             ss.ignore();
             u64 us;
             ss >> us;
-            if (!ss.fail()) {
-                // Scale to microseconds (input may have 1-6 digits)
-                while (us < 100000) us *= 10;
+            if (!ss.fail()) 
                 tp += std::chrono::microseconds(us);
-            }
         }
         tp_ = tp;
     }
 
-    // Get current time
     static Time now() noexcept {
         auto now = std::chrono::system_clock::now();
         return Time(now);
@@ -635,7 +620,6 @@ public:
                 time.seconds().count());
     }
 
-    // Comparison operators
     bool operator==(const Time& other) const noexcept { return tp_ == other.tp_; }
     bool operator!=(const Time& other) const noexcept { return tp_ != other.tp_; }
     bool operator<(const Time& other)  const noexcept { return tp_ < other.tp_; }
@@ -643,7 +627,6 @@ public:
     bool operator>(const Time& other)  const noexcept { return tp_ > other.tp_; }
     bool operator>=(const Time& other) const noexcept { return tp_ >= other.tp_; }
 
-    // Arithmetic operators
     Time operator+(const std::chrono::microseconds& duration) const noexcept {
         return Time(tp_ + duration);
     }
@@ -656,7 +639,6 @@ public:
         return std::chrono::duration_cast<std::chrono::microseconds>(tp_ - other.tp_);
     }
 
-    // Get components
     i32 year() const noexcept {
         auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp_)};
         return static_cast<int>(ymd.year());
