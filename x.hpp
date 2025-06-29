@@ -355,6 +355,16 @@ inline u64 timestamp() noexcept {
             time_since_epoch().count();
 }
 
+inline u64 timestamp_ms() noexcept {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+inline u64 timestamp_us() noexcept {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 inline i32 rand_int(i32 min, i32 max) noexcept {
     static std::random_device rd;
     static std::mt19937 gen(rd());
