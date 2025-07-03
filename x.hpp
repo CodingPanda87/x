@@ -68,6 +68,19 @@
 #define CONCAT_IMPL(s1, s2) s1 s2
 #define _cat(s1, s2) CONCAT_IMPL(s1, s2)
 
+
+// adapte lower version of MSC
+#if defined(_MSC_VER) && _MSC_VER < 1936
+namespace std {
+    template <typename... Args>
+    struct format_string {
+        std::string_view str;
+        constexpr format_string(const char* s) : str(s) {}
+        constexpr format_string(std::string_view s) : str(s) {}
+    };
+}
+#endif
+
 #if __cplusplus < 202302L
 namespace std {
 template<typename... Args>
