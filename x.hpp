@@ -534,6 +534,12 @@ public:
         }
         return *this;
     }
+
+    static Struct One(const std::any& value){
+        Struct s;
+        s.add(".", value);
+        return s;
+    } 
     
     template<typename T>
     void add(cStr& key, const T& value) {
@@ -546,6 +552,15 @@ public:
             return std::any_cast<T>(data_.at(key));
         } catch (const std::bad_any_cast&) {
             throw std::runtime_error(_fmt("Type mismatch for key: {}", key));
+        }
+    }
+
+    template<typename T>
+    T getOnly1() const {
+        try {
+            return std::any_cast<T>(data_.at("."));
+        } catch (const std::bad_any_cast&) {
+            throw std::runtime_error(_fmt("Type mismatch for key: {}", "."));
         }
     }
 
@@ -614,33 +629,17 @@ public:
     }
 
     static Time now() noexcept {
-        auto now = std::chrono::system_clock::now();
-        return Time(now);
+        return Time(std::chrono::system_clock::now());
     }
 
     // Serialize to string "YYYY-MM-DD HH:MM:SS.ffffff"
     str to_string() const noexcept {
-        auto dp = std::chrono::floor<std::chrono::days>(tp_);
-        auto ymd = std::chrono::year_month_day{dp};
-        auto time = std::chrono::hh_mm_ss{tp_ - dp};
-        
-        if (time.subseconds().count() > 0) {
-            return _fmt("{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
-                static_cast<int>(ymd.year()),
-                static_cast<unsigned>(ymd.month()),
-                static_cast<unsigned>(ymd.day()),
-                time.hours().count(),
-                time.minutes().count(),
-                time.seconds().count(),
-                time.subseconds().count()/10);
-        }
-        return _fmt("{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                static_cast<int>(ymd.year()),
-                static_cast<unsigned>(ymd.month()),
-                static_cast<unsigned>(ymd.day()),
-                time.hours().count(),
-                time.minutes().count(),
-                time.seconds().count());
+        auto local_time = std::chrono::zoned_time{ std::chrono::current_zone(), tp_};
+        auto local_tp = local_time.get_local_time();
+        auto dp = floor<std::chrono::days>(local_tp);
+        std::chrono::year_month_day ymd{dp};
+        std::chrono::hh_mm_ss hms{local_tp - dp};
+        return _fmt("{} {}",ymd, hms);
     }
 
     bool operator==(const Time& other) const noexcept { return tp_ == other.tp_; }
