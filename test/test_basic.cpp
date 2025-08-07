@@ -85,11 +85,11 @@ TEST(XTest, CompileTimeConcat) {
     #define S1  "hi,"
     #define S2  "x-lib"
     constexpr auto s1 = _cat("hello", "world");
-    static_assert(s1 == "helloworld", "Concat failed");
+    static_assert(std::string_view(s1) == std::string_view("helloworld"), "Concat failed");
     constexpr auto s2 = _cat(S1, S2);
-    static_assert(s2 == "hi,x-lib", "Concat failed");
+    static_assert(std::string_view(s2) == std::string_view("hi,x-lib"), "Concat failed");
     constexpr auto s3 = _cat(S1, "x-lib");
-    static_assert(s3 == "hi,x-lib", "Concat failed");
+    static_assert(std::string_view(s3) == std::string_view("hi,x-lib"), "Concat failed");
 }
 
 TEST(XTest, MacroTest) {

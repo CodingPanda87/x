@@ -47,7 +47,11 @@ TEST_F(FilesystemTest, TestReadWriteFile) {
 TEST_F(FilesystemTest, TestPathOperations) {
     _vec<str> parts = {"a", "b", "c.txt"};
     str joined = x::join_path(parts);
+#ifdef _WIN32
     EXPECT_EQ(joined, "a\\b\\c.txt");
+#else
+    EXPECT_EQ(joined, "a/b/c.txt");
+#endif
 
     _vec<str> split = x::split_path(joined);
     EXPECT_EQ(split.size(), 3);
@@ -56,7 +60,11 @@ TEST_F(FilesystemTest, TestPathOperations) {
     EXPECT_EQ(split[2], "c.txt");
 
     str norm = x::norm_path("a/./b/../c.txt");
+#ifdef _WIN32
     EXPECT_EQ(norm, "a\\c.txt");
+#else
+    EXPECT_EQ(norm, "a/c.txt");
+#endif
 }
 
 TEST_F(FilesystemTest, TestFileSize) {
@@ -95,7 +103,11 @@ TEST_F(FilesystemTest, TestFilename) {
     EXPECT_EQ(x::file_name("path/to/file.ext"), "file.ext");
     EXPECT_EQ(x::file_name("path/"), "");
     EXPECT_EQ(x::file_name("/"), "");
+#ifdef _WIN32
     EXPECT_EQ(x::file_name("\\"), "");
+#else
+    EXPECT_EQ(x::file_name("\\"), "\\");
+#endif
     EXPECT_EQ(x::file_name("a/b/c.tar.gz"), "c.tar.gz");
     
     // Test Unicode filenames
@@ -104,6 +116,7 @@ TEST_F(FilesystemTest, TestFilename) {
 }
 
 TEST_F(FilesystemTest, TestPathOperationsExtended) {
+#ifdef _WIN32
     // Test more complex path joining
     EXPECT_EQ(x::join_path({"a", "b", "..", "c"}), "a\\b\\..\\c");
     EXPECT_EQ(x::join_path({".", "a", "b"}), ".\\a\\b");
@@ -111,6 +124,15 @@ TEST_F(FilesystemTest, TestPathOperationsExtended) {
     
     // Test path normalization edge cases
     EXPECT_EQ(x::norm_path("a/./b/.././c"), "a\\c");
+#else
+    // Test more complex path joining
+    EXPECT_EQ(x::join_path({"a", "b", "..", "c"}), "a/b/../c");
+    EXPECT_EQ(x::join_path({".", "a", "b"}), "./a/b");
+    EXPECT_EQ(x::join_path({"a", "", "b"}), "a/b");  // Empty path component
+    
+    // Test path normalization edge cases
+    EXPECT_EQ(x::norm_path("a/./b/.././c"), "a/c");
+#endif
     EXPECT_EQ(x::norm_path("./a/../"), ".");
     EXPECT_EQ(x::norm_path(""), "");
 }
@@ -126,4 +148,24 @@ TEST_F(FilesystemTest, TestErrorCases) {
     x::remove_file("nonexistent");
     x::remove_dir("nonexistent");
     EXPECT_TRUE(x::list_dir("nonexistent").empty());
+}
+
+TEST_F(FilesystemTest, TestFileTime) {
+    // Test file_time function with existing file
+    str time_str = x::file_time(test_file);
+    EXPECT_FALSE(time_str.empty());
+    
+    // Verify the format matches YYYY-MM-DD HH:MM:SS
+    EXPECT_EQ(time_str.length(), 19); // "YYYY-MM-DD HH:MM:SS" is 19 characters
+    
+    // Check that it has the correct format pattern
+    EXPECT_EQ(time_str[4], '-');
+    EXPECT_EQ(time_str[7], '-');
+    EXPECT_EQ(time_str[10], ' ');
+    EXPECT_EQ(time_str[13], ':');
+    EXPECT_EQ(time_str[16], ':');
+    
+    // Test file_time function with nonexistent file
+    str nonexistent_time = x::file_time("nonexistent_file");
+    EXPECT_TRUE(nonexistent_time.empty());
 }

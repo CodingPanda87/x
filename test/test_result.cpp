@@ -93,12 +93,12 @@ TEST(ResultTest, MoveSemantics) {
     
     Result r2(std::move(r1));
     EXPECT_EQ(r2.dat1<std::vector<int>>().size(), 3);
-    EXPECT_TRUE(r1.dat1<std::vector<int>>().empty()); // NOLINT
+    EXPECT_FALSE(r1.has_data1());
     
     Result r3;
     r3 = std::move(r2);
     EXPECT_EQ(r3.dat1<std::vector<int>>().size(), 3);
-    EXPECT_TRUE(r2.dat1<std::vector<int>>().empty()); // NOLINT
+    EXPECT_FALSE(r2.has_data2());
 }
 
 TEST(ResultTest, CopyBehavior) {

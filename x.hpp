@@ -1,10 +1,10 @@
 //*******************************************************
 //                      ___   ___ 
-//                      \  \ /  / 
-//                       \  V  /  
-//                        >   <   
-//                       /  .  \  
-//                      /__/ \__\ 
+//                      \  \ /  /
+//                       \  V  /
+//                        >   <
+//                       /  .  \
+//                      /__/ \__\
 //
 //*******************************************************                              
 
@@ -343,6 +343,17 @@ inline void remove_dir(cStr& path) {
     std::filesystem::remove_all(path);
 }
 
+inline str file_time(cStr& path) {
+    if (!exists(path)) return "";
+    auto ftime = std::filesystem::last_write_time(path);
+    auto sys_time = std::chrono::clock_cast<std::chrono::system_clock>(ftime);
+    auto timestamp = std::chrono::system_clock::to_time_t(sys_time);
+    std::tm* tm = std::localtime(&timestamp);
+    std::ostringstream oss;
+    oss << std::put_time(tm, "%Y-%m-%d %H:%M:%S");
+    return oss.str();
+}
+
 // ----------------------- utility functions -----------------------
 
 inline u64 id_thread() noexcept{
@@ -451,11 +462,56 @@ public:
     Result()  = default;
     Result(cU32& code, cStr& msg = "") : code_(code), msg_(msg) {}
 
+    Result(const Result& other) 
+        : code_(other.code_), msg_(other.msg_),
+          dat1_(other.dat1_), dat2_(other.dat2_), dat3_(other.dat3_) {}
+
+    Result(Result&& other) noexcept 
+        : code_(other.code_), msg_(std::move(other.msg_)),
+          dat1_(std::move(other.dat1_)), dat2_(std::move(other.dat2_)), dat3_(std::move(other.dat3_)) {
+        other.code_ = 0xFFFFFFFF;
+        other.msg_.clear();
+        other.dat1_.reset();
+        other.dat2_.reset();
+        other.dat3_.reset();
+    }
+
+    Result& operator=(const Result& other) {
+        if (this != &other) {
+            code_ = other.code_;
+            msg_  = other.msg_;
+            dat1_ = other.dat1_;
+            dat2_ = other.dat2_;
+            dat3_ = other.dat3_;
+        }
+        return *this;
+    }
+
+    Result& operator=(Result&& other) noexcept {
+        if (this != &other) {
+            code_ = other.code_;
+            msg_  = std::move(other.msg_);
+            dat1_ = std::move(other.dat1_);
+            dat2_ = std::move(other.dat2_);
+            dat3_ = std::move(other.dat3_);
+            other.code_ = 0xFFFFFFFF;
+            other.msg_.clear();
+            other.dat1_.reset();
+            other.dat2_.reset();
+            other.dat3_.reset();
+        }
+        return *this;
+    }
+
     bool    ok()        const noexcept { return code_ == 0;  }
     cU32&   code()      const noexcept { return code_;       }
     cStr&   message()   const noexcept { return msg_;        }
 
     operator bool()     const noexcept { return ok();        }
+
+    bool has_data1()    const noexcept { return dat1_.has_value();    }
+    bool has_data2()    const noexcept { return dat2_.has_value();    }
+    bool has_data3()    const noexcept { return dat3_.has_value();    }
 
     void setResult(const std::any& d1, 
                    const std::any& d2 = _nul, 
@@ -633,6 +689,7 @@ public:
     }
 
     // Serialize to string "YYYY-MM-DD HH:MM:SS.ffffff"
+    // [local time]
     str to_string() const noexcept {
         auto local_time = std::chrono::zoned_time{ std::chrono::current_zone(), tp_};
         auto local_tp = local_time.get_local_time();
@@ -693,7 +750,7 @@ public:
     
     u64 microseconds() const noexcept {
         auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
-        return time.subseconds().count()/10;
+        return time.subseconds().count();
     }
 
 private:
