@@ -652,7 +652,7 @@ public:
     
     Time(cI32& year,     cI32& month,      cI32& day, 
          cI32& hour = 0, cI32& minute = 0, cI32& second = 0, 
-         cI32& microseconds = 0) {
+         cI32& microseconds = 0,const bool & isTimeZone = true) {
         auto dp = std::chrono::year_month_day{
             std::chrono::year{year},
             std::chrono::month{static_cast<unsigned>(month)},
@@ -664,24 +664,56 @@ public:
             std::chrono::seconds{second} +
             std::chrono::microseconds{microseconds}
         };
-        tp_ = std::chrono::sys_days{dp} + time.to_duration();
+        auto tp = std::chrono::sys_days{dp} + time.to_duration();
+        
+        if (isTimeZone) {
+            // Convert local time to UTC by adding the timezone offset
+            auto local_zone = std::chrono::current_zone();
+            auto zt = std::chrono::zoned_time{local_zone, tp};
+            auto offset = zt.get_info().offset;
+            tp -= offset;
+        }
+        
+        tp_us_ = std::chrono::duration_cast<std::chrono::microseconds>(
+            tp.time_since_epoch()).count();
     }
 
-    // Create from string "YYYY-MM-DD HH:MM:SS.fffffff"
-    explicit Time(cStr& time_str) {
+    // Create from string "YYYY-MM-DD HH:MM:SS.ffffff"
+    explicit Time(cStr& time_str,const bool & isTimeZone = true) {
+        std::tm tm = {};
         std::istringstream ss(time_str);
-        std::chrono::sys_time<std::chrono::microseconds> tp;
-        ss >> std::chrono::parse("%Y-%m-%d %H:%M:%S", tp);
+        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
         if (ss.fail()) 
-            throw std::runtime_error("Invalid time format");
+            throw std::runtime_error("Invalid time format : " + time_str);
+        
+        auto dp = std::chrono::year_month_day{
+            std::chrono::year{tm.tm_year + 1900},
+            std::chrono::month{static_cast<unsigned>(tm.tm_mon + 1)},
+            std::chrono::day{static_cast<unsigned>(tm.tm_mday)}
+        };
+        
+        auto time = std::chrono::hh_mm_ss{
+            std::chrono::hours{tm.tm_hour} + 
+            std::chrono::minutes{tm.tm_min} + 
+            std::chrono::seconds{tm.tm_sec}
+        };
+        
+        u64 us = 0;
         if (ss.peek() == '.') {
             ss.ignore();
-            u64 us;
             ss >> us;
-            if (!ss.fail()) 
-                tp += std::chrono::microseconds(us);
         }
-        tp_ = tp;
+        
+        auto tp = std::chrono::sys_days{dp} + time.to_duration() + std::chrono::microseconds(us);
+        if (isTimeZone) {
+            // Convert local time to UTC by adding the timezone offset
+            auto local_zone = std::chrono::current_zone();
+            auto zt = std::chrono::zoned_time{local_zone, tp};
+            auto offset = zt.get_info().offset;
+            tp -= offset;
+        }
+        tp_us_ = std::chrono::duration_cast<std::chrono::microseconds>(
+            tp.time_since_epoch()).count();
     }
 
     static Time now() noexcept {
@@ -689,74 +721,130 @@ public:
     }
 
     // Serialize to string "YYYY-MM-DD HH:MM:SS.ffffff"
-    // [local time]
-    str to_string() const noexcept {
-        auto local_time = std::chrono::zoned_time{ std::chrono::current_zone(), tp_};
-        auto local_tp = local_time.get_local_time();
-        auto dp = floor<std::chrono::days>(local_tp);
-        std::chrono::year_month_day ymd{dp};
-        std::chrono::hh_mm_ss hms{local_tp - dp};
-        return _fmt("{} {}",ymd, hms);
+    // [UTC time by default, local time when isTimeZone=true]
+    str to_string(bool isTimeZone = true) const noexcept {
+        auto tp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_));
+        
+        if (isTimeZone) {
+            auto local_time = std::chrono::zoned_time{ std::chrono::current_zone(), tp};
+            auto local_tp = local_time.get_local_time();
+            auto dp = floor<std::chrono::days>(local_tp);
+            std::chrono::year_month_day ymd{dp};
+            auto time_of_day = local_tp - dp;
+            auto h = std::chrono::duration_cast<std::chrono::hours>(time_of_day);
+            time_of_day -= h;
+            auto m = std::chrono::duration_cast<std::chrono::minutes>(time_of_day);
+            time_of_day -= m;
+            auto s = std::chrono::duration_cast<std::chrono::seconds>(time_of_day);
+            time_of_day -= s;
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(time_of_day);
+            return _fmt("{}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}", 
+                      int(ymd.year()), unsigned(ymd.month()), unsigned(ymd.day()),
+                      h.count(), m.count(), s.count(), us.count());
+        } else {
+            auto dp = std::chrono::floor<std::chrono::days>(tp);
+            std::chrono::year_month_day ymd{dp};
+            auto time_of_day = tp - dp;
+            auto h = std::chrono::duration_cast<std::chrono::hours>(time_of_day);
+            time_of_day -= h;
+            auto m = std::chrono::duration_cast<std::chrono::minutes>(time_of_day);
+            time_of_day -= m;
+            auto s = std::chrono::duration_cast<std::chrono::seconds>(time_of_day);
+            time_of_day -= s;
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(time_of_day);
+            return _fmt("{}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}", 
+                      int(ymd.year()), unsigned(ymd.month()), unsigned(ymd.day()),
+                      h.count(), m.count(), s.count(), us.count());
+        }
     }
 
-    bool operator==(const Time& other) const noexcept { return tp_ == other.tp_; }
-    bool operator!=(const Time& other) const noexcept { return tp_ != other.tp_; }
-    bool operator<(const Time& other)  const noexcept { return tp_ < other.tp_; }
-    bool operator<=(const Time& other) const noexcept { return tp_ <= other.tp_; }
-    bool operator>(const Time& other)  const noexcept { return tp_ > other.tp_; }
-    bool operator>=(const Time& other) const noexcept { return tp_ >= other.tp_; }
+    bool operator==(const Time& other) const noexcept { 
+        return tp_us_ == other.tp_us_; 
+    }
+    bool operator!=(const Time& other) const noexcept { 
+        return tp_us_ != other.tp_us_; 
+    }
+    bool operator<(const Time& other)  const noexcept { 
+        return tp_us_ < other.tp_us_; 
+    }
+    bool operator<=(const Time& other) const noexcept { 
+        return tp_us_ <= other.tp_us_; 
+    }
+    bool operator>(const Time& other)  const noexcept { 
+        return tp_us_ > other.tp_us_; 
+    }
+    bool operator>=(const Time& other) const noexcept { 
+        return tp_us_ >= other.tp_us_; 
+    }
 
     Time operator+(const std::chrono::microseconds& duration) const noexcept {
-        return Time(tp_ + duration);
+        return Time(std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_) + duration));
     }
     
     Time operator-(const std::chrono::microseconds& duration) const noexcept {
-        return Time(tp_ - duration);
+        return Time(std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_) - duration));
     }
     
     std::chrono::microseconds operator-(const Time& other) const noexcept {
-        return std::chrono::duration_cast<std::chrono::microseconds>(tp_ - other.tp_);
+        return std::chrono::microseconds(tp_us_ - other.tp_us_);
     }
 
     i32 year() const noexcept {
-        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp_)};
+        auto tp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_));
+        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp)};
         return static_cast<int>(ymd.year());
     }
     
     i32 month() const noexcept {
-        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp_)};
+        auto tp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_));
+        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp)};
         return static_cast<unsigned>(ymd.month());
     }
     
     i32 day() const noexcept {
-        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp_)};
+        auto tp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_));
+        auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(tp)};
         return static_cast<unsigned>(ymd.day());
     }
     
     i32 hour() const noexcept {
-        auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
+        auto tp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_));
+        auto time = std::chrono::hh_mm_ss{tp - std::chrono::floor<std::chrono::days>(tp)};
         return time.hours().count();
     }
     
     i32 minute() const noexcept {
-        auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
+        auto tp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_));
+        auto time = std::chrono::hh_mm_ss{tp - std::chrono::floor<std::chrono::days>(tp)};
         return time.minutes().count();
     }
     
     u64 second() const noexcept {
-        auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
+        auto tp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_));
+        auto time = std::chrono::hh_mm_ss{tp - std::chrono::floor<std::chrono::days>(tp)};
         return time.seconds().count();
     }
-    
     u64 microseconds() const noexcept {
-        auto time = std::chrono::hh_mm_ss{tp_ - std::chrono::floor<std::chrono::days>(tp_)};
-        return time.subseconds().count();
+        auto tp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(tp_us_));
+        auto time = tp - std::chrono::floor<std::chrono::days>(tp);
+        return std::chrono::duration_cast<std::chrono::microseconds>(time).count() % 1000000;
     }
 
 private:
-    explicit Time(std::chrono::system_clock::time_point tp) : tp_(tp) {}
+    explicit Time(std::chrono::system_clock::time_point tp) : 
+        tp_us_(std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch()).count()) {}
     
-    std::chrono::system_clock::time_point tp_;
+    u64 tp_us_;
 };
 
 } // namespace x
